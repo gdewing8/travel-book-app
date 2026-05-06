@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { searchBooks } from "@/lib/openLibrary";
 import { personalize } from "@/lib/personalize";
-import type { RecommendRequest, RecommendResponse, Book } from "@/lib/types";
+import type { RecommendResponse, Book } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -10,48 +10,53 @@ const MAX_MOOD_LEN = 500;
 const MAX_GENRES = 20;
 const MAX_GENRE_LEN = 50;
 
-function isValidBody(body: unknown): body is RecommendRequest {
-  if (!body || typeof body !== "object") return false;
-  const b = body as Record<string, unknown>;
-  return (
-    typeof b.destination === "string" &&
-    b.destination.length <= MAX_DESTINATION_LEN &&
-    Array.isArray(b.genres) &&
-    b.genres.length <= MAX_GENRES &&
-    b.genres.every(
-      (g) => typeof g === "string" && (g as string).length <= MAX_GENRE_LEN,
-    ) &&
-    typeof b.mood === "string" &&
-    b.mood.length <= MAX_MOOD_LEN
-  );
+const CACHE_HEADER =
+  "public, s-maxage=86400, stale-while-revalidate=604800";
+
+type ParsedQuery =
+  | { ok: true; destination: string; genres: string[]; mood: string }
+  | { ok: false; error: string };
+
+function parseQuery(url: URL): ParsedQuery {
+  const destination = (url.searchParams.get("destination") ?? "").trim();
+  const mood = (url.searchParams.get("mood") ?? "").trim();
+  const genres = url.searchParams.getAll("genre");
+
+  if (!destination) return { ok: false, error: "Destination is required" };
+  if (destination.length > MAX_DESTINATION_LEN) {
+    return { ok: false, error: "Destination too long" };
+  }
+  if (mood.length > MAX_MOOD_LEN) {
+    return { ok: false, error: "Mood too long" };
+  }
+  if (genres.length > MAX_GENRES) {
+    return { ok: false, error: "Too many genres" };
+  }
+  if (genres.some((g) => g.length > MAX_GENRE_LEN)) {
+    return { ok: false, error: "Genre value too long" };
+  }
+
+  return { ok: true, destination, genres, mood };
 }
 
-export async function POST(request: Request) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+function jsonWithCache(body: RecommendResponse, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { "Cache-Control": CACHE_HEADER },
+  });
+}
+
+export async function GET(request: Request) {
+  const parsed = parseQuery(new URL(request.url));
+  if (!parsed.ok) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  if (!isValidBody(body)) {
-    return NextResponse.json(
-      { error: "Expected { destination, genres, mood }" },
-      { status: 400 },
-    );
-  }
-
-  const destination = body.destination.trim();
-  if (!destination) {
-    return NextResponse.json(
-      { error: "Destination is required" },
-      { status: 400 },
-    );
-  }
+  const { destination, genres, mood } = parsed;
 
   let candidates: Book[];
   try {
-    candidates = await searchBooks(destination, body.genres);
+    candidates = await searchBooks(destination, genres);
   } catch (err) {
     console.error("Open Library error:", err);
     return NextResponse.json(
@@ -61,43 +66,37 @@ export async function POST(request: Request) {
   }
 
   if (candidates.length === 0) {
-    const empty: RecommendResponse = {
+    return jsonWithCache({
       books: [],
       personalized: false,
       notice: `No books found for "${destination}". Try a more specific or well-known destination.`,
-    };
-    return NextResponse.json(empty);
+    });
   }
 
-  const mood = body.mood.trim();
-
   if (!mood) {
-    const response: RecommendResponse = {
+    return jsonWithCache({
       books: candidates.slice(0, 8),
       personalized: false,
-    };
-    return NextResponse.json(response);
+    });
   }
 
   const { books: ranked, hits } = personalize(mood, candidates);
 
   if (hits === 0) {
-    const response: RecommendResponse = {
+    return jsonWithCache({
       books: candidates.slice(0, 8),
       personalized: false,
       notice:
         "Couldn't find a strong match for that mood — showing top catalog picks instead. Try words like \"atmospheric\", \"funny\", \"classic\", or \"thriller\".",
-    };
-    return NextResponse.json(response);
+    });
   }
 
-  const response: RecommendResponse = {
+  return jsonWithCache({
     books: ranked,
     personalized: true,
     notice:
       hits < 4
         ? `Only ${hits} strong mood match${hits === 1 ? "" : "es"} for this destination — filling in with top catalog picks.`
         : undefined,
-  };
-  return NextResponse.json(response);
+  });
 }

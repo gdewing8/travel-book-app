@@ -9,12 +9,6 @@ export type Book = {
   subjects: string[];
 };
 
-export type RecommendRequest = {
-  destination: string;
-  genres: string[];
-  mood: string;
-};
-
 export type RecommendResponse = {
   books: Book[];
   personalized: boolean;

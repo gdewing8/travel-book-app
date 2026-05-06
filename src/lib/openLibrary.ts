@@ -50,7 +50,8 @@ async function fetchSearch(q: string): Promise<RawDoc[]> {
   const url = `${SEARCH_URL}?${params.toString()}`;
   const res = await fetch(url, {
     headers: {
-      "User-Agent": "TravelBookApp/0.1 (educational project)",
+      "User-Agent":
+        "Bookmark/0.1 (https://github.com/gdewing8/travel-book-app)",
       Accept: "application/json",
     },
   });

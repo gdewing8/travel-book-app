@@ -24,11 +24,11 @@ export default function Home() {
       destination: values.destination,
     });
     try {
-      const res = await fetch("/api/recommend", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
-      });
+      const params = new URLSearchParams();
+      params.set("destination", values.destination);
+      if (values.mood) params.set("mood", values.mood);
+      for (const g of values.genres) params.append("genre", g);
+      const res = await fetch(`/api/recommend?${params.toString()}`);
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as {
           error?: string;
