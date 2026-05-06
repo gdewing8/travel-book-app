@@ -61,8 +61,10 @@ async function fetchSearch(q: string): Promise<RawDoc[]> {
   return data.docs ?? [];
 }
 
+const VALID_KEY = /^\/(works|books)\/[A-Z0-9]+$/i;
+
 function toBook(doc: RawDoc): Book | null {
-  if (!doc.title || !doc.key) return null;
+  if (!doc.title || !doc.key || !VALID_KEY.test(doc.key)) return null;
   const author = doc.author_name?.[0] ?? "Unknown";
   const sentence = Array.isArray(doc.first_sentence)
     ? doc.first_sentence[0]
