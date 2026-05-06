@@ -5,14 +5,24 @@ import type { RecommendRequest, RecommendResponse, Book } from "@/lib/types";
 
 export const runtime = "nodejs";
 
+const MAX_DESTINATION_LEN = 100;
+const MAX_MOOD_LEN = 500;
+const MAX_GENRES = 20;
+const MAX_GENRE_LEN = 50;
+
 function isValidBody(body: unknown): body is RecommendRequest {
   if (!body || typeof body !== "object") return false;
   const b = body as Record<string, unknown>;
   return (
     typeof b.destination === "string" &&
+    b.destination.length <= MAX_DESTINATION_LEN &&
     Array.isArray(b.genres) &&
-    b.genres.every((g) => typeof g === "string") &&
-    typeof b.mood === "string"
+    b.genres.length <= MAX_GENRES &&
+    b.genres.every(
+      (g) => typeof g === "string" && (g as string).length <= MAX_GENRE_LEN,
+    ) &&
+    typeof b.mood === "string" &&
+    b.mood.length <= MAX_MOOD_LEN
   );
 }
 
